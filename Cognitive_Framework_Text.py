@@ -68,8 +68,27 @@ def get_headers():
     return headers
 
 def strip_think_tags(text: str) -> str:
-    """Remove <think>...</think> blocks from LLM output (for reasoning models)."""
-    cleaned = re.sub(r'<think>.*?</think>\s*', '', text, flags=re.DOTALL)
+    """
+    Remove <think>...</think> blocks from LLM output.
+    Handles multiple blocks, nested content, and various edge cases.
+    """
+    import re
+    
+    # Pattern handles:
+    # - Multiline content (DOTALL flag)
+    # - Optional whitespace/newlines around tags
+    # - Case insensitive (some models use <Think>)
+    # - Multiple think blocks in one response
+    # - Trailing whitespace/newlines after removal
+    
+    pattern = r'<[Tt][Hh][Ii][Nn][Kk]>.*?</[Tt][Hh][Ii][Nn][Kk]>\s*'
+    cleaned = re.sub(pattern, '', text, flags=re.DOTALL)
+    
+    # Also catch unclosed think tags (model got cut off mid-thought)
+    # This removes <think> and everything after it if no closing tag
+    if '<think>' in cleaned.lower() and '</think>' not in cleaned.lower():
+        cleaned = re.split(r'<[Tt][Hh][Ii][Nn][Kk]>', cleaned)[0]
+    
     return cleaned.strip()
 
 def call_llm(messages: List[Dict[str, str]], temperature: float = None, max_tokens: int = None) -> str:
