@@ -109,10 +109,10 @@ Compatible with any OpenAI-compatible API:
 
 ## Usage
 
-### Text-Based (Congnitive_Framework_Text.py)
+### Text-Based (Cognitive_Framework_Text.py)
 
 ```bash
-python3 Congnitive_Framework_Text.py
+python3 Cognitive_Framework_Text.py
 ```
 
 Interactive commands:
@@ -121,10 +121,10 @@ Interactive commands:
 - `learn <key> <value>` — Store a fact about the user
 - `quit` — Save and exit
 
-### Voice-Enabled (Congnitive_Framework_Voice.py)
+### Voice-Enabled (Cognitive_Framework_Voice.py)
 
 ```bash
-python3 Congnitive_Framework_Voice.py
+python3 Cognitive_Framework_Voice.py
 ```
 
 Voice commands:
