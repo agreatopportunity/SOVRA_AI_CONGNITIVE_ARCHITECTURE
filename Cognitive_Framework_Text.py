@@ -281,6 +281,9 @@ class PatternDetector:
         # Meta
         "meta_conversation": ["this conversation", "we're talking", "you said", "i said", "earlier you"],
         "feedback": ["good job", "well done", "that's wrong", "try again", "better"],
+
+        # Disengagement signals
+        "disengaged": ["ok", "okay", "sure", "fine", "whatever", "idk", "idc", "meh", "k", "kk"],
     }
     
     @classmethod
@@ -364,6 +367,7 @@ class EmotionalSystem:
         
         # Emotion response mappings
         self.pattern_effects = {
+            # Positive effects
             "question": {"curiosity": 0.08, "focus": 0.05},
             "inquiry": {"curiosity": 0.1, "engagement": 0.05},
             "emotional": {"engagement": 0.15, "warmth": 0.1},
@@ -382,6 +386,12 @@ class EmotionalSystem:
             "farewell": {"warmth": 0.05, "care": 0.1},
             "disagreement": {"uncertainty": 0.05, "focus": 0.1},
             "feedback": {"engagement": 0.1, "curiosity": 0.05},
+    
+            # Negative/disengagement effects (NEW)
+            "short_input": {"engagement": -0.1, "energy": -0.05, "curiosity": -0.05},
+            "trailing_off": {"engagement": -0.05, "uncertainty": 0.05},
+            "shouting": {"uncertainty": 0.1, "warmth": -0.1},
+            "disengaged": {"engagement": -0.15, "energy": -0.1, "warmth": -0.05, "curiosity": -0.1},            
         }
     
     def decay(self):
@@ -452,12 +462,12 @@ class MetaAwareness:
         
         # Thresholds for intervention
         self.thresholds = {
-            "uncertainty_high": 0.7,
+            "uncertainty_high": 0.65,
             "uncertainty_low": 0.2,
-            "engagement_low": 0.3,
-            "focus_low": 0.3,
-            "energy_low": 0.2,
-            "imbalance_threshold": 0.5,  # Max diff between related emotions
+            "engagement_low": 0.5,
+            "focus_low": 0.4,
+            "energy_low": 0.3,
+            "imbalance_threshold": 0.4,  # Max diff between related emotions
         }
         
         # Intervention cooldowns (don't intervene too often)
