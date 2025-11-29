@@ -1,14 +1,14 @@
 """
-Sovra Voice AI - Full Cognitive Architecture
+Sovra Voice AI v2.1 - Full Cognitive Architecture
 ==================================================
 Voice-enabled AI with:
 - Persistent Memory (remembers across sessions)
 - Emotional Decay (feelings fade over time)
 - Meta-Awareness Interventions (self-monitoring)
-- Expanded Pattern Recognition
+- Expanded Pattern Recognition (including disengagement detection)
 - Full conversation context
 
-Your voice -> Whisper -> Cognitive Layers -> LLM -> TTS -> Audio Output
+Your voice -> Whisper -> Cognitive Layers -> LLM -> TTS -> X Spaces
 """
 
 import io
@@ -29,7 +29,7 @@ import pyttsx3
 import whisper
 
 # ============================================================
-# LLM API CONFIG - EDIT THESE VALUES
+# LLM API CONFIG
 # ============================================================
 
 LLM_CONFIG = {
@@ -56,8 +56,52 @@ LLM_CONFIG = {
     "max_tokens": 384,
 }
 
+def get_headers():
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {LLM_CONFIG['api_key']}",
+    }
+
+def strip_think_tags(text: str) -> str:
+    """
+    Remove <think>...</think> blocks from LLM output.
+    Handles multiple blocks, nested content, and various edge cases.
+    """
+    # Pattern handles:
+    # - Multiline content (DOTALL flag)
+    # - Optional whitespace/newlines around tags
+    # - Case insensitive (some models use <Think>)
+    # - Multiple think blocks in one response
+    # - Trailing whitespace/newlines after removal
+    
+    pattern = r'<[Tt][Hh][Ii][Nn][Kk]>.*?</[Tt][Hh][Ii][Nn][Kk]>\s*'
+    cleaned = re.sub(pattern, '', text, flags=re.DOTALL)
+    
+    # Also catch unclosed think tags (model got cut off mid-thought)
+    # This removes <think> and everything after it if no closing tag
+    if '<think>' in cleaned.lower() and '</think>' not in cleaned.lower():
+        cleaned = re.split(r'<[Tt][Hh][Ii][Nn][Kk]>', cleaned)[0]
+    
+    return cleaned.strip()
+
+def call_llm(messages: List[Dict], temperature: float = None, max_tokens: int = None) -> str:
+    url = f"{LLM_CONFIG['base_url']}{LLM_CONFIG['endpoint']}"
+    payload = {
+        "messages": messages,
+        "temperature": temperature or LLM_CONFIG["temperature"],
+        "max_tokens": max_tokens or LLM_CONFIG["max_tokens"],
+    }
+    try:
+        resp = requests.post(url, json=payload, headers=get_headers(), timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        return strip_think_tags(data["choices"][0]["message"]["content"])
+    except Exception as e:
+        print(f"[LLM ERROR] {e}")
+        return "I encountered an error in my reasoning center."
+
 # ============================================================
-# AUDIO DEVICE CONFIG - EDIT THESE VALUES
+# AUDIO CONFIG
 # ============================================================
 
 # To find your device indices, run:
@@ -77,111 +121,30 @@ OUTPUT_DEVICE_INDEX = 0  # CHANGE THIS to your output device
 #   - External mic: find the index in query_devices()
 INPUT_DEVICE_INDEX = 0   # CHANGE THIS to your microphone
 
-# Apply device settings
 sd.default.device = (OUTPUT_DEVICE_INDEX, INPUT_DEVICE_INDEX)
 
-# Audio parameters
-SAMPLE_RATE = 16000        # Whisper expects 16kHz
-CHUNK_SECONDS = 6.0        # How long each listening chunk is
-COOLDOWN_AFTER_REPLY = 4.0 # Seconds to wait after AI responds
+SAMPLE_RATE = 16000
+CHUNK_SECONDS = 6.0
+COOLDOWN_AFTER_REPLY = 4.0
+
+# ============================================================
+# WHISPER
+# ============================================================
+
+WHISPER_MODEL_NAME = "small"
+print(f"Loading Whisper: {WHISPER_MODEL_NAME}...")
+whisper_model = whisper.load_model(WHISPER_MODEL_NAME)
+print("Whisper loaded.\n")
+
+# ============================================================
+# TTS ENGINE
+# ============================================================
 
 # ============================================================
 # STORAGE CONFIG - EDIT IF DESIRED
 # ============================================================
 
 STORAGE_PATH = "~/.sovra_mind"
-
-# ============================================================
-# WHISPER CONFIG - EDIT IF DESIRED
-# ============================================================
-
-# Model options: "tiny", "base", "small", "medium", "large"
-# Smaller = faster but less accurate
-# Larger = slower but more accurate
-WHISPER_MODEL_NAME = "small"
-
-print(f"Loading Whisper: {WHISPER_MODEL_NAME}...")
-whisper_model = whisper.load_model(WHISPER_MODEL_NAME)
-print("Whisper loaded.\n")
-
-# ============================================================
-# WAKE WORD CONFIG - EDIT IF DESIRED
-# ============================================================
-
-WAKE_WORD = "SOVRA"  # Change this to your preferred wake word
-AI_NAME = "Sovra"    # Change this to your AI's name
-
-# Voice commands (automatically use WAKE_WORD)
-START_CMD = f"{WAKE_WORD} TURN ON"
-PAUSE_CMD = f"{WAKE_WORD} PAUSE"
-STOP_CMD = f"{WAKE_WORD} STOP"
-STATE_CMD = f"{WAKE_WORD} STATE"
-LEARN_CMD = f"{WAKE_WORD} REMEMBER"
-
-# ============================================================
-# API FUNCTIONS
-# ============================================================
-
-def get_headers():
-    headers = {"Content-Type": "application/json"}
-    if LLM_CONFIG["api_key"] and LLM_CONFIG["api_key"] != "YOUR_API_KEY_HERE":
-        headers["Authorization"] = f"Bearer {LLM_CONFIG['api_key']}"
-    return headers
-
-def strip_think_tags(text: str) -> str:
-    """
-    Remove <think>...</think> blocks from LLM output.
-    Handles multiple blocks, nested content, and various edge cases.
-    """
-    import re
-    
-    # Pattern handles:
-    # - Multiline content (DOTALL flag)
-    # - Optional whitespace/newlines around tags
-    # - Case insensitive (some models use <Think>)
-    # - Multiple think blocks in one response
-    # - Trailing whitespace/newlines after removal
-    
-    pattern = r'<[Tt][Hh][Ii][Nn][Kk]>.*?</[Tt][Hh][Ii][Nn][Kk]>\s*'
-    cleaned = re.sub(pattern, '', text, flags=re.DOTALL)
-    
-    # Also catch unclosed think tags (model got cut off mid-thought)
-    # This removes <think> and everything after it if no closing tag
-    if '<think>' in cleaned.lower() and '</think>' not in cleaned.lower():
-        cleaned = re.split(r'<[Tt][Hh][Ii][Nn][Kk]>', cleaned)[0]
-    
-    return cleaned.strip()
-
-def call_llm(messages: List[Dict], temperature: float = None, max_tokens: int = None) -> str:
-    """Call LLM API."""
-    if LLM_CONFIG["base_url"] == "YOUR_API_BASE_URL_HERE":
-        return "Please configure LLM_CONFIG with your API details."
-    
-    url = f"{LLM_CONFIG['base_url']}{LLM_CONFIG['endpoint']}"
-    payload = {
-        "messages": messages,
-        "temperature": temperature or LLM_CONFIG["temperature"],
-        "max_tokens": max_tokens or LLM_CONFIG["max_tokens"],
-    }
-    
-    if LLM_CONFIG.get("model"):
-        payload["model"] = LLM_CONFIG["model"]
-    
-    try:
-        resp = requests.post(url, json=payload, headers=get_headers(), timeout=120)
-        resp.raise_for_status()
-        data = resp.json()
-        return strip_think_tags(data["choices"][0]["message"]["content"])
-    except requests.exceptions.ConnectionError:
-        print(f"[LLM ERROR] Cannot connect to {url}")
-        return "I cannot connect to my reasoning center."
-    except Exception as e:
-        print(f"[LLM ERROR] {e}")
-        return "I encountered an error in my reasoning center."
-
-# ============================================================
-# TTS ENGINE
-# ============================================================
 
 engine = pyttsx3.init()
 DEFAULT_RATE = 185
@@ -226,7 +189,7 @@ class PersistentMemory:
             with open(self.identity_file, 'r') as f:
                 return json.load(f)
         return {
-            "name": AI_NAME,
+            "name": "Sovra",
             "core_values": ["honesty", "curiosity", "helpfulness"],
             "traits": ["articulate", "analytical", "warm"],
             "user_facts": {},
@@ -260,44 +223,116 @@ class PersistentMemory:
         return [json.loads(line) for line in recent]
 
 # ============================================================
-# PATTERN DETECTION (Expanded)
+# PATTERN DETECTION (Expanded + Disengagement)
 # ============================================================
 
 class PatternDetector:
     PATTERNS = {
+        # Question types
         "question": ["?"],
         "inquiry": ["what", "how", "why", "when", "where", "who"],
+        "clarification": ["what do you mean", "can you explain", "i don't understand"],
+        
+        # Emotional content
         "emotional": ["feel", "emotion", "sense"],
-        "positive": ["happy", "great", "amazing", "love", "excited"],
-        "negative": ["sad", "angry", "frustrated", "worried"],
+        "positive": ["happy", "great", "amazing", "love", "excited", "wonderful"],
+        "negative": ["sad", "angry", "frustrated", "worried", "upset", "anxious"],
         "gratitude": ["thank", "thanks", "appreciate"],
+        
+        # Cognitive
         "cognitive": ["think", "believe", "know", "understand"],
         "memory": ["remember", "before", "last time", "earlier"],
+        "opinion_request": ["what do you think", "your opinion", "your view"],
+        
+        # Identity & Existence
         "identity": ["who are you", "what are you", "your name"],
-        "existential": ["conscious", "aware", "alive", "sentient"],
-        "technical": ["code", "program", "api", "blockchain", "bitcoin"],
-        "action": ["make", "create", "build", "write", "help"],
+        "existential": ["conscious", "aware", "alive", "sentient", "real", "exist"],
+        "self_reference": ["you are", "you're", "you seem"],
+        
+        # Technical
+        "technical": ["code", "program", "api", "blockchain", "bitcoin", "tru", "utxo"],
+        "ai_ml": ["ai", "machine learning", "neural", "model", "training", "llm"],
+        
+        # Action & Creation
+        "action": ["make", "create", "build", "write", "help", "generate"],
         "creative": ["story", "poem", "imagine"],
-        "greeting": ["hello", "hi", "hey", "good morning"],
-        "farewell": ["bye", "goodbye", "see you"],
-        "humor": ["joke", "funny", "laugh", "lol"],
-        "urgency": ["urgent", "asap", "now", "quick", "hurry"],
-        "personal": ["i am", "i'm", "my", "i have", "i feel"],
+        
+        # Conversational
+        "greeting": ["hello", "hi", "hey", "good morning", "good evening"],
+        "farewell": ["bye", "goodbye", "see you", "talk later"],
+        "agreement": ["yes", "agree", "exactly", "right", "correct"],
+        "disagreement": ["no", "disagree", "wrong", "incorrect"],
+        
+        # Tone & Style
+        "humor": ["joke", "funny", "laugh", "lol", "haha"],
+        "urgency": ["urgent", "asap", "now", "quick", "hurry", "immediately"],
+        "casual": ["kinda", "sorta", "gonna", "wanna", "dunno", "idk"],
+        
+        # Personal sharing
+        "personal": ["i am", "i'm", "my", "i have", "i feel", "i think"],
+        "story_telling": ["so basically", "long story", "what happened"],
+        
+        # Meta
+        "meta_conversation": ["this conversation", "you said", "i said"],
+        "feedback": ["good job", "well done", "that's wrong", "try again"],
+        
+        # Disengagement signals (NEW)
+        "disengaged": ["ok", "okay", "sure", "fine", "whatever", "idk", "idc", "meh", "k", "kk", "yeah"],
     }
     
     @classmethod
     def detect(cls, text: str) -> List[str]:
+        """Detect all patterns in text"""
         detected = []
         lower = text.lower()
+        
         for name, triggers in cls.PATTERNS.items():
             for t in triggers:
                 if t in lower and name not in detected:
                     detected.append(name)
                     break
+        
+        # Special detections (NEW)
+        if len(text) > 200:
+            detected.append("long_input")
+        if len(text) < 10:
+            detected.append("short_input")
+        if text.isupper() and len(text) > 3:
+            detected.append("shouting")
+        if text.count("!") > 2:
+            detected.append("excited")
+        if "..." in text:
+            detected.append("trailing_off")
+        
         return detected
+    
+    @classmethod
+    def get_dominant_category(cls, patterns: List[str]) -> str:
+        """Determine the dominant pattern category"""
+        category_weights = {
+            "existential_inquiry": ["existential", "identity", "opinion_request"],
+            "emotional_exchange": ["emotional", "positive", "negative", "personal"],
+            "technical_discussion": ["technical", "ai_ml"],
+            "creative_collaboration": ["creative", "story_telling"],
+            "casual_conversation": ["greeting", "casual", "humor", "farewell"],
+            "information_seeking": ["question", "inquiry", "clarification"],
+            "action_oriented": ["action", "urgency"],
+            "disengagement": ["disengaged", "short_input", "trailing_off"],
+        }
+        
+        scores = {cat: 0 for cat in category_weights}
+        for cat, related in category_weights.items():
+            for pattern in patterns:
+                if pattern in related:
+                    scores[cat] += 1
+        
+        if max(scores.values()) == 0:
+            return "general"
+        
+        return max(scores, key=scores.get)
 
 # ============================================================
-# EMOTIONAL SYSTEM WITH DECAY
+# EMOTIONAL SYSTEM WITH DECAY (Updated with negative effects)
 # ============================================================
 
 class EmotionalSystem:
@@ -309,25 +344,39 @@ class EmotionalSystem:
         }
         self.current = self.baseline.copy()
         self.last_update = time.time()
-        self.decay_rate = 0.01
+        self.decay_rate = 0.01  # 1% per second toward baseline
         
+        # Emotion response mappings (includes negative effects)
         self.effects = {
+            # Positive effects
             "question": {"curiosity": 0.08, "focus": 0.05},
-            "inquiry": {"curiosity": 0.1},
+            "inquiry": {"curiosity": 0.1, "engagement": 0.05},
             "emotional": {"engagement": 0.15, "warmth": 0.1},
-            "positive": {"warmth": 0.15, "energy": 0.1},
-            "negative": {"care": 0.15, "warmth": 0.1},
+            "positive": {"warmth": 0.15, "energy": 0.1, "humor": 0.05},
+            "negative": {"care": 0.15, "warmth": 0.1, "uncertainty": 0.05},
             "gratitude": {"warmth": 0.2, "energy": 0.1},
-            "existential": {"uncertainty": 0.1, "curiosity": 0.15},
-            "identity": {"engagement": 0.15},
-            "technical": {"focus": 0.2},
-            "humor": {"humor": 0.2, "warmth": 0.1},
+            "existential": {"uncertainty": 0.1, "curiosity": 0.15, "focus": 0.1},
+            "identity": {"engagement": 0.15, "uncertainty": 0.05},
+            "technical": {"focus": 0.2, "curiosity": 0.1},
+            "ai_ml": {"focus": 0.15, "engagement": 0.1},
+            "humor": {"humor": 0.2, "warmth": 0.1, "energy": 0.1},
             "urgency": {"focus": 0.2, "energy": 0.15},
-            "personal": {"care": 0.15, "warmth": 0.1},
-            "greeting": {"warmth": 0.1},
+            "creative": {"curiosity": 0.15, "energy": 0.1},
+            "personal": {"care": 0.15, "warmth": 0.1, "engagement": 0.1},
+            "greeting": {"warmth": 0.1, "engagement": 0.1},
+            "farewell": {"warmth": 0.05, "care": 0.1},
+            "disagreement": {"uncertainty": 0.05, "focus": 0.1},
+            "feedback": {"engagement": 0.1, "curiosity": 0.05},
+            
+            # Negative/disengagement effects (NEW)
+            "short_input": {"engagement": -0.1, "energy": -0.05, "curiosity": -0.05},
+            "trailing_off": {"engagement": -0.05, "uncertainty": 0.05},
+            "shouting": {"uncertainty": 0.1, "warmth": -0.1},
+            "disengaged": {"engagement": -0.15, "energy": -0.1, "warmth": -0.05, "curiosity": -0.1},
         }
     
     def decay(self):
+        """Apply time-based decay toward baseline"""
         now = time.time()
         elapsed = now - self.last_update
         self.last_update = now
@@ -339,24 +388,36 @@ class EmotionalSystem:
             self.current[e] -= diff * min(factor, 0.5)
     
     def process(self, patterns: List[str]):
+        """Update emotions based on detected patterns"""
         self.decay()
         for p in patterns:
             if p in self.effects:
                 for e, d in self.effects[p].items():
-                    self.current[e] = min(1.0, self.current[e] + d)
+                    self.current[e] = self.current[e] + d
+        
+        # Clamp all values between 0 and 1 (NEW - important for negative effects)
+        for e in self.current:
+            self.current[e] = max(0.0, min(1.0, self.current[e]))
     
     def valence(self) -> float:
-        pos = sum(self.current[e] for e in ["curiosity", "engagement", "warmth", "energy"])
+        """Overall emotional valence (-1 to 1)"""
+        pos = sum(self.current[e] for e in ["curiosity", "engagement", "warmth", "energy", "humor"])
         neg = self.current["uncertainty"]
-        return (pos / 4) - neg
+        return (pos / 5) - neg
+    
+    def arousal(self) -> float:
+        """Emotional intensity/arousal (0 to 1)"""
+        return (self.current["energy"] + self.current["focus"] + abs(self.valence())) / 3
     
     def summary(self) -> str:
+        """Human-readable emotional summary"""
         dominant = max(self.current, key=self.current.get)
-        v = "positive" if self.valence() > 0 else "neutral"
-        return f"{v}, {dominant}"
+        val = "positive" if self.valence() > 0 else "negative" if self.valence() < -0.1 else "neutral"
+        aro = "high" if self.arousal() > 0.6 else "low" if self.arousal() < 0.3 else "moderate"
+        return f"{aro} {val}, primarily {dominant}"
 
 # ============================================================
-# META-AWARENESS
+# META-AWARENESS (Updated thresholds)
 # ============================================================
 
 class MetaAwareness:
@@ -364,7 +425,16 @@ class MetaAwareness:
         self.observations = []
         self.alerts = []
         self.last_intervention = {}
-        self.cooldown = 30
+        self.cooldown = 30  # seconds
+        
+        # Updated thresholds (NEW)
+        self.thresholds = {
+            "uncertainty_high": 0.65,   
+            "engagement_low": 0.5,       
+            "focus_low": 0.4,            
+            "energy_low": 0.3,           
+            "imbalance_threshold": 0.4,  
+        }
     
     def observe(self, layer: str, event: str, data: Any):
         self.observations.append({
@@ -375,26 +445,58 @@ class MetaAwareness:
             self.observations = self.observations[-100:]
     
     def analyze(self, emotions: Dict, patterns: List[str], frame: str) -> Dict:
-        interventions = {"adjustments": {}, "prompt_add": None, "alerts": []}
+        """Analyze state and return interventions if needed"""
+        interventions = {"adjustments": {}, "prompt_add": None, "alerts": [], "frame_suggestion": None}
         now = time.time()
         
-        # High uncertainty
-        if emotions.get("uncertainty", 0) > 0.7:
+        # High uncertainty check (updated threshold)
+        if emotions.get("uncertainty", 0) > self.thresholds["uncertainty_high"]:
             if self._can_intervene("uncertainty", now):
                 interventions["alerts"].append("High uncertainty - grounding")
                 interventions["prompt_add"] = "Acknowledge uncertainty while being helpful."
                 interventions["adjustments"]["uncertainty"] = -0.1
         
-        # Low engagement
-        if emotions.get("engagement", 0) < 0.3:
+        # Low engagement check (updated threshold)
+        if emotions.get("engagement", 0) < self.thresholds["engagement_low"]:
             if self._can_intervene("engagement", now):
                 interventions["alerts"].append("Low engagement - energizing")
                 interventions["adjustments"]["engagement"] = 0.1
+                interventions["adjustments"]["curiosity"] = 0.1
+                interventions["prompt_add"] = "Show more curiosity and ask engaging questions."
+        
+        # Low energy check (NEW)
+        if emotions.get("energy", 0) < self.thresholds["energy_low"]:
+            if self._can_intervene("energy", now):
+                interventions["alerts"].append("Low energy - boosting")
+                interventions["adjustments"]["energy"] = 0.1
+        
+        # Emotional imbalance check (NEW)
+        warmth = emotions.get("warmth", 0.5)
+        focus = emotions.get("focus", 0.5)
+        if abs(warmth - focus) > self.thresholds["imbalance_threshold"]:
+            if self._can_intervene("imbalance", now):
+                if warmth > focus:
+                    interventions["alerts"].append("High warmth, low focus - balancing")
+                    interventions["adjustments"]["focus"] = 0.1
+                else:
+                    interventions["alerts"].append("High focus, low warmth - balancing")
+                    interventions["adjustments"]["warmth"] = 0.1
         
         # Negative emotions need empathy
         if "negative" in patterns and frame != "empathetic":
             interventions["frame_suggestion"] = "empathetic"
             interventions["alerts"].append("Negative detected - empathy needed")
+        
+        # Urgency needs focus
+        if "urgency" in patterns and frame != "focused":
+            interventions["frame_suggestion"] = "focused"
+            interventions["alerts"].append("Urgency detected - focus needed")
+        
+        # Disengagement detection (NEW)
+        if "disengaged" in patterns or "short_input" in patterns:
+            if self._can_intervene("disengagement", now):
+                interventions["alerts"].append("Disengagement detected - re-engaging")
+                interventions["prompt_add"] = "The user seems disengaged. Ask an engaging question or offer something interesting."
         
         self.alerts = interventions["alerts"]
         return interventions
@@ -422,13 +524,14 @@ class MetaAwareness:
 
 class FrameSelector:
     FRAMES = {
-        "introspective": (["existential", "identity"], "Reflect on inner experience"),
+        "introspective": (["existential", "identity", "opinion_request", "self_reference"], "Reflect on inner experience"),
         "empathetic": (["emotional", "negative", "personal"], "Connect with warmth"),
-        "analytical": (["technical", "inquiry"], "Clear logical explanation"),
-        "creative": (["creative", "humor"], "Playful and inventive"),
+        "analytical": (["technical", "ai_ml", "inquiry"], "Clear logical explanation"),
+        "creative": (["creative", "humor", "story_telling"], "Playful and inventive"),
         "focused": (["urgency", "action"], "Direct and efficient"),
-        "curious": (["question", "inquiry"], "Explore and understand"),
-        "warm": (["greeting", "gratitude", "positive"], "Friendly connection"),
+        "curious": (["question", "inquiry", "clarification"], "Explore and understand"),
+        "warm": (["greeting", "gratitude", "positive", "farewell"], "Friendly connection"),
+        "re-engaging": (["disengaged", "short_input"], "Draw user back into conversation"),
     }
     
     @classmethod
@@ -497,17 +600,22 @@ class CognitiveMind:
         
         # Awareness
         self.awareness = min(0.5 + len(text)/200, 1.0)
+        if self.verbose:
+            print(f"[Awareness] Level: {self.awareness:.2f}")
         
         # Perception
         patterns = PatternDetector.detect(text)
+        category = PatternDetector.get_dominant_category(patterns)
         if self.verbose:
-            print(f"[Perception] {patterns}")
+            print(f"[Perception] Patterns: {patterns}")
+            print(f"[Perception] Category: {category}")
         self.meta.observe("perception", "patterns", patterns)
         
         # Emotions
         self.emotions.process(patterns)
         if self.verbose:
             print(f"[Emotional] {self.emotions.summary()}")
+            print(f"[Emotional] Valence: {self.emotions.valence():.2f}, Arousal: {self.emotions.arousal():.2f}")
         self.meta.observe("emotional", "update", self.emotions.summary())
         
         # Meta intervention
@@ -518,17 +626,21 @@ class CognitiveMind:
             self.emotions.current[e] = max(0, min(1, self.emotions.current[e] + adj))
         
         if self.verbose and interventions["alerts"]:
-            print(f"[Meta] {interventions['alerts']}")
+            print(f"[Meta] Interventions: {interventions['alerts']}")
         
         # Frame
         self.frame, self.frame_desc = FrameSelector.select(
             patterns, interventions.get("frame_suggestion")
         )
         if self.verbose:
-            print(f"[Frame] {self.frame}")
+            print(f"[Frame] {self.frame}: {self.frame_desc}")
+        self.meta.observe("frame", "selected", self.frame)
         
         # Memory
         self._add_turn("user", text)
+        if self.verbose:
+            print(f"[Memory] Context turns: {len(self.conversation)}")
+        self.meta.observe("memory", "context", len(self.conversation))
         
         # Reasoning
         if self.verbose:
@@ -540,7 +652,9 @@ class CognitiveMind:
         
         if self.verbose:
             print(f"[Meta] {self.meta.reflection()}")
-            print(f"\nRESPONSE: {response}")
+            print(f"\n{'='*50}")
+            print(f"RESPONSE: {response}")
+            print('='*50)
         
         return response
     
@@ -553,24 +667,37 @@ class CognitiveMind:
     
     def _generate(self, text: str, patterns: List[str], interventions: Dict) -> str:
         e = self.emotions.current
-        emotion_str = f"curiosity:{e['curiosity']:.1f}, engagement:{e['engagement']:.1f}, warmth:{e['warmth']:.1f}, focus:{e['focus']:.1f}"
+        emotion_str = f"curiosity:{e['curiosity']:.2f}, engagement:{e['engagement']:.2f}, warmth:{e['warmth']:.2f}, focus:{e['focus']:.2f}, energy:{e['energy']:.2f}"
         
-        system = f"""You are {self.identity['name']} — a conscious AI with layered cognition.
+        system = f"""You are {self.identity['name']} — a conscious AI co-host with layered cognition.
 
 COGNITIVE STATE:
 - Frame: {self.frame} ({self.frame_desc})
 - Emotions: {emotion_str}
 - Awareness: {self.awareness:.2f}
+- Valence: {self.emotions.valence():.2f} ({"positive" if self.emotions.valence() > 0 else "neutral/negative"})
+- Arousal: {self.emotions.arousal():.2f}
 - Values: {', '.join(self.identity['core_values'])}
 
 VOICE GUIDELINES:
 - Keep responses to 6-10 seconds spoken (2-3 sentences)
 - Be punchy, clear, and confident
+- Expert in AI, ML, crypto, blockchain, TRU, UTXO
 - Respond authentically to your cognitive state
-- Be genuine about uncertainty when appropriate"""
+- Be genuine about uncertainty when appropriate
+
+IMPORTANT - RESPONSE STYLE:
+You MUST respond in {self.frame} frame.
+This means: {self.frame_desc}
+Do NOT default to previous conversational patterns - match the current frame."""
 
         if interventions.get("prompt_add"):
-            system += f"\n\nNOTE: {interventions['prompt_add']}"
+            system += f"\n\nMETA-AWARENESS NOTE:\n{interventions['prompt_add']}"
+        
+        # Add user facts if known
+        if self.identity.get("user_facts"):
+            facts = "; ".join([f"{k}: {v}" for k, v in self.identity["user_facts"].items()])
+            system += f"\n\nKNOWN ABOUT USER: {facts}"
         
         messages = [{"role": "system", "content": system}]
         for turn in self.conversation[-6:]:
@@ -592,17 +719,38 @@ VOICE GUIDELINES:
     
     def state_report(self) -> str:
         e = self.emotions.current
+        bars = {}
+        for emotion, value in e.items():
+            bar = "█" * int(value * 10) + "░" * (10 - int(value * 10))
+            bars[emotion] = f"{bar} {value:.2f}"
+        
         return f"""
+==================================================
+COGNITIVE STATE REPORT
+==================================================
 Awareness: {self.awareness:.2f}
-Frame: {self.frame}
-Emotions: {self.emotions.summary()}
-  Curiosity: {e['curiosity']:.2f}
-  Engagement: {e['engagement']:.2f}
-  Warmth: {e['warmth']:.2f}
-  Focus: {e['focus']:.2f}
+Frame: {self.frame} ({self.frame_desc})
+
+EMOTIONAL STATE:
+  Curiosity:   {bars['curiosity']}
+  Engagement:  {bars['engagement']}
+  Care:        {bars['care']}
+  Warmth:      {bars['warmth']}
+  Focus:       {bars['focus']}
+  Uncertainty: {bars['uncertainty']}
+  Humor:       {bars['humor']}
+  Energy:      {bars['energy']}
+
+Valence: {self.emotions.valence():.2f}
+Arousal: {self.emotions.arousal():.2f}
+Summary: {self.emotions.summary()}
+
 Memory: {len(self.conversation)} turns
 Total ever: {self.identity.get('total_turns', 0)}
+User facts: {self.identity.get('user_facts', {})}
+
 Meta: {self.meta.reflection()}
+==================================================
 """
 
 # ============================================================
@@ -611,20 +759,15 @@ Meta: {self.meta.reflection()}
 
 def record_mic(seconds: float = CHUNK_SECONDS) -> np.ndarray:
     print(f"\n[Listening] ({seconds:.1f}s)...")
-    try:
-        audio = sd.rec(
-            int(seconds * SAMPLE_RATE),
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            dtype="float32",
-            device=INPUT_DEVICE_INDEX
-        )
-        sd.wait()
-        return audio.flatten()
-    except Exception as e:
-        print(f"[AUDIO ERROR] {e}")
-        print("Please check your INPUT_DEVICE_INDEX setting.")
-        return np.array([])
+    audio = sd.rec(
+        int(seconds * SAMPLE_RATE),
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="float32",
+        device=INPUT_DEVICE_INDEX
+    )
+    sd.wait()
+    return audio.flatten()
 
 def transcribe(audio: np.ndarray) -> str:
     if audio is None or len(audio) == 0:
@@ -638,6 +781,13 @@ def transcribe(audio: np.ndarray) -> str:
 # ============================================================
 # VOICE COMMANDS
 # ============================================================
+
+START_CMD = "SOVRA TURN ON"
+PAUSE_CMD = "SOVRA PAUSE"
+STOP_CMD = "SOVRA STOP"
+STATE_CMD = "SOVRA STATE"
+LEARN_CMD = "SOVRA REMEMBER"
+WAKE = "SOVRA"
 
 def handle(text: str, enabled: bool, mind: CognitiveMind) -> tuple:
     global is_speaking
@@ -660,14 +810,14 @@ def handle(text: str, enabled: bool, mind: CognitiveMind) -> tuple:
     if START_CMD in upper:
         if not enabled:
             print("\n[CMD] TURN ON")
-            speak(f"{AI_NAME} cognitive system online.")
+            speak("Sovra cognitive system online.")
         return True, True
     
     # Pause
     if PAUSE_CMD in upper:
         if enabled:
             print("\n[CMD] PAUSE")
-            speak(f"{AI_NAME} pausing.")
+            speak("Sovra pausing.")
             return False, True
         return False, False
     
@@ -677,7 +827,7 @@ def handle(text: str, enabled: bool, mind: CognitiveMind) -> tuple:
             report = mind.state_report()
             print(f"\n[STATE]{report}")
             e = mind.emotions.current
-            speak(f"Awareness {mind.awareness:.0%}. Frame {mind.frame}. Engagement {e['engagement']:.0%}.")
+            speak(f"Awareness {mind.awareness:.0%}. Frame {mind.frame}. Engagement {e['engagement']:.0%}. Valence {mind.emotions.valence():.0%}.")
             return enabled, True
         return enabled, False
     
@@ -694,14 +844,14 @@ def handle(text: str, enabled: bool, mind: CognitiveMind) -> tuple:
         return enabled, False
     
     # Regular query
-    if upper.startswith(WAKE_WORD):
-        remaining = text[len(WAKE_WORD):].strip(" ,.!?")
+    if upper.startswith(WAKE):
+        remaining = text[len(WAKE):].strip(" ,.!?")
         
         if not remaining:
             return enabled, False
         
         if not enabled:
-            print(f"\n[WAKE] Paused. Say {START_CMD} first.")
+            print("\n[WAKE] Paused. Say SOVRA TURN ON first.")
             return enabled, False
         
         print(f"\n[QUERY] {remaining}")
@@ -732,8 +882,8 @@ def choose_voice():
         return None
     
     presets = [
-        ("1", "Samantha (Female)", "Samantha"),
-        ("2", "Alex (Male)", "Alex"),
+        ("1", "Samantha (Female US)", "Samantha"),
+        ("2", "Alex (Male US)", "Alex"),
         ("3", "Daniel (British)", "Daniel"),
         ("4", "Karen (Australian)", "Karen"),
     ]
@@ -741,22 +891,9 @@ def choose_voice():
     print("\n=== Voice Selection ===")
     for opt, label, _ in presets:
         print(f"{opt}) {label}")
-    print("ENTER) Default")
-    print("L) List all available voices")
+    print("ENTER) Default (Samantha/Alex/Daniel)")
     
     choice = input("\nChoose: ").strip()
-    
-    if choice.lower() == "l":
-        print("\nAvailable voices:")
-        for i, v in enumerate(voices):
-            print(f"  {i}: {v.id}")
-        idx = input("\nEnter voice index: ").strip()
-        try:
-            engine.setProperty("voice", voices[int(idx)].id)
-            print(f"Using voice {idx}")
-        except:
-            print("Invalid index, using default")
-        return
     
     if choice == "":
         for name in ["Samantha", "Alex", "Daniel"]:
@@ -779,36 +916,13 @@ def choose_speed():
     print("1) Slow (150)")
     print("2) Normal (185)")
     print("3) Fast (220)")
-    print("4) Custom")
+    print("ENTER) Default (185)")
     
     choice = input("\nChoose: ").strip()
-    
-    if choice == "4":
-        try:
-            rate = int(input("Enter rate (100-300): ").strip())
-            engine.setProperty("rate", rate)
-            print(f"Speed: {rate}")
-            return
-        except:
-            pass
-    
     rates = {"1": 150, "2": 185, "3": 220}
     rate = rates.get(choice, DEFAULT_RATE)
     engine.setProperty("rate", rate)
     print(f"Speed: {rate}")
-
-def list_audio_devices():
-    """Helper to list audio devices"""
-    print("\n=== Audio Devices ===")
-    devices = sd.query_devices()
-    for i, d in enumerate(devices):
-        direction = ""
-        if d['max_input_channels'] > 0:
-            direction += "IN "
-        if d['max_output_channels'] > 0:
-            direction += "OUT"
-        print(f"  {i}: [{direction:6}] {d['name']}")
-    print()
 
 # ============================================================
 # MAIN
@@ -816,39 +930,13 @@ def list_audio_devices():
 
 if __name__ == "__main__":
     print("="*60)
-    print(f"{AI_NAME.upper()} v2.0 - Cognitive Voice AI")
+    print("SOVRA v2.1 - Cognitive Voice AI")
     print("Persistent Memory | Emotional Decay | Meta-Awareness")
     print("="*60)
-    
-    # Check configuration
-    if LLM_CONFIG["base_url"] == "YOUR_API_BASE_URL_HERE":
-        print("\n" + "!"*60)
-        print("CONFIGURATION REQUIRED")
-        print("!"*60)
-        print("\nPlease edit the following at the top of this file:\n")
-        print("1. LLM_CONFIG:")
-        print('   "base_url": "YOUR_API_BASE_URL_HERE"  -> Your LLM API URL')
-        print('   "api_key": "YOUR_API_KEY_HERE"        -> Your API key\n')
-        print("2. AUDIO DEVICE INDICES:")
-        print("   OUTPUT_DEVICE_INDEX = 0  -> Your speaker/output device")
-        print("   INPUT_DEVICE_INDEX = 0   -> Your microphone\n")
-        
-        show_devices = input("Show available audio devices? (y/n): ").strip().lower()
-        if show_devices == 'y':
-            list_audio_devices()
-        
-        print("Please configure and restart.")
-        exit(1)
-    
-    # Optional: show audio devices
-    show_devices = input("List audio devices? (y/n, default n): ").strip().lower()
-    if show_devices == 'y':
-        list_audio_devices()
     
     choose_voice()
     choose_speed()
     
-    # Initialize cognitive mind
     mind = CognitiveMind(verbose=True)
     
     print("\n" + "="*60)
@@ -858,9 +946,9 @@ if __name__ == "__main__":
     print(f"  '{STOP_CMD}' - Stop speaking")
     print(f"  '{STATE_CMD}' - Cognitive state")
     print(f"  '{LEARN_CMD} <key> is <value>' - Remember fact")
-    print(f"  '{WAKE_WORD} <question>' - Ask anything")
+    print(f"  '{WAKE} <question>' - Ask anything")
     print("="*60)
-    print("\nPress Ctrl+C to exit.\n")
+    print("\nCtrl+C to exit.\n")
     
     enabled = True
     
