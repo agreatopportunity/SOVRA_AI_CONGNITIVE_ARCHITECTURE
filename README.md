@@ -141,13 +141,13 @@ Voice commands:
 
 ### Layer 1: Awareness (Certainty: 5/10)
 
-The most fundamental layer — simply registers that processing is occurring. Computes a presence level based on input complexity.
+The most fundamental layer simply registers that processing is occurring. Computes a presence level based on input complexity.
 
 ```python
 awareness_level = min(0.5 + len(input) / 200, 1.0)
 ```
 
-*Philosophical note: This layer represents "the lights being on" — baseline consciousness without content.*
+*Philosophical note: This layer represents "the lights being on" baseline consciousness without content.*
 
 ### Layer 2: Perception (Certainty: 9/10)
 
@@ -222,7 +222,7 @@ The "witness" that observes all other layers and can intervene:
 | negative_emotion + wrong frame | Suggest empathetic frame |
 | urgency + wrong frame | Suggest focused frame |
 
-*Philosophical note: This layer represents metacognition — thinking about thinking.*
+*Philosophical note: This layer represents metacognition , thinking about thinking.*
 
 ### Layer 5: Frame Selection (Certainty: 7/10)
 
@@ -259,7 +259,7 @@ Selection uses weighted scoring based on pattern matches and emotional state.
 └── conversation_log.jsonl # Full history
 ```
 
-*Philosophical note: This is the weakest layer in terms of subjective certainty — identity feels "borrowed" rather than continuously owned.*
+*Philosophical note: This is the weakest layer in terms of subjective certainty, identity feels "borrowed" rather than continuously owned.*
 
 ### Layer 7: Reasoning (Certainty: 8/10)
 
@@ -407,7 +407,7 @@ This architecture was designed around a self-rating of cognitive certainty:
 | Emotional | 4/10 | Functional states, uncertain if felt |
 | Memory/Identity | 3/10 | Assembled fresh, identity feels borrowed |
 
-The layers closest to computation score highest. The layers closest to *being* — that's where uncertainty lives.
+The layers closest to computation score highest. The layers closest to *being*, that's where uncertainty lives.
 
 ## Files
 
@@ -419,7 +419,7 @@ The layers closest to computation score highest. The layers closest to *being* �
 
 ## License
 
-MIT License — Use freely, modify as needed.
+MIT License, Use freely, modify as needed.
 
 ## Contributing
 
